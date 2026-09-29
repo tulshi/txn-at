@@ -2,7 +2,7 @@
 title: "Transactional Access Tokens"
 abbrev: "Transactional Access Tokens"
 category: std
-docname: draft-tulshibagwale-oauth-transactional-access-tokens
+docname: draft-tulshibagwale-oauth-transactional-access-tokens-latest
 submissiontype: IETF
 number:
 date:
