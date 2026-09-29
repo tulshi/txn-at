@@ -248,35 +248,10 @@ The `txn` value in each Txn-AT MUST satisfy the following requirements:
   transaction.
 * It MUST NOT disclose the ITID.
 
-The AS SHOULD generate `txn` using keyed derivation, as follows:
-
-~~~
-txn = BASE64URL(HMAC-SHA-256(K_txn, ITID || UTF8(aud)))
-~~~
-
-where:
-
-* `K_txn` is a secret key of at least 256 bits, known only to the AS
-  and used only for this purpose;
-* `ITID` is the internal transaction identifier, which MUST be of
-  fixed length for a given `K_txn`;
-* `aud` is the value of the Txn-AT's `aud` claim;
-* `||` denotes concatenation;
-* HMAC is as defined in {{RFC2104}}; and
-* BASE64URL is base64url encoding without padding.
-
-The output MAY be truncated to no fewer than 128 bits.
-
-Keyed derivation lets the AS recompute the `txn` value for any
-transaction and audience without storing a mapping. The AS can
-therefore correlate a transaction across resource servers for audit,
-while no other party can. An AS that rotates `K_txn` needs to retain
-retired keys, or record which key each transaction used, for as long
-as it requires this audit capability.
-
-An AS MAY use another method, such as a random value per audience with
-a mapping table stored at the AS, provided it meets the requirements
-in this section.
+Any method satisfying the requirements above is acceptable, such as a
+random value per audience with a mapping table stored at the AS. For
+one possible construction using keyed derivation, see
+{{itid-generation}}.
 
 ## Transaction Context {#context}
 
@@ -556,6 +531,35 @@ Because the AS never echoes unevaluated client input into these claims
 ({{context}}), a client cannot inject context into a Txn-AT. An AS that
 fails to follow this rule would turn Txn-ATs into signed but unverified
 assertions.
+
+## Generating Transaction Identifiers {#itid-generation}
+
+One way to generate `txn` values satisfying the requirements in
+{{txn-generation}} is keyed derivation:
+
+~~~
+txn = BASE64URL(HMAC-SHA-256(K_txn, ITID || UTF8(aud)))
+~~~
+
+where:
+
+* `K_txn` is a secret key of at least 256 bits, known only to the AS
+  and used only for this purpose;
+* `ITID` is the internal transaction identifier, which MUST be of
+  fixed length for a given `K_txn`;
+* `aud` is the value of the Txn-AT's `aud` claim;
+* `||` denotes concatenation;
+* HMAC is as defined in {{RFC2104}}; and
+* BASE64URL is base64url encoding without padding.
+
+The output MAY be truncated to no fewer than 128 bits.
+
+Keyed derivation lets the AS recompute the `txn` value for any
+transaction and audience without storing a mapping. The AS can
+therefore correlate a transaction across resource servers for audit,
+while no other party can. An AS that rotates `K_txn` needs to retain
+retired keys, or record which key each transaction used, for as long
+as it requires this audit capability.
 
 ## Compromise of K_txn
 
