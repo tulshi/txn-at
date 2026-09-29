@@ -1249,10 +1249,13 @@ makes a fresh policy decision for each transaction.<a href="#section-abstract-1"
                 <p id="section-toc.1-1.7.2.5.1"><a href="#section-7.5" class="auto internal xref">7.5</a>.  <a href="#name-context-integrity" class="internal xref">Context Integrity</a></p>
 </li>
               <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.7.2.6">
-                <p id="section-toc.1-1.7.2.6.1"><a href="#section-7.6" class="auto internal xref">7.6</a>.  <a href="#name-compromise-of-k_txn" class="internal xref">Compromise of K_txn</a></p>
+                <p id="section-toc.1-1.7.2.6.1"><a href="#section-7.6" class="auto internal xref">7.6</a>.  <a href="#name-generating-transaction-iden" class="internal xref">Generating Transaction Identifiers</a></p>
 </li>
               <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.7.2.7">
-                <p id="section-toc.1-1.7.2.7.1"><a href="#section-7.7" class="auto internal xref">7.7</a>.  <a href="#name-clock-skew" class="internal xref">Clock Skew</a></p>
+                <p id="section-toc.1-1.7.2.7.1"><a href="#section-7.7" class="auto internal xref">7.7</a>.  <a href="#name-compromise-of-k_txn" class="internal xref">Compromise of K_txn</a></p>
+</li>
+              <li class="compact toc ulBare ulEmpty" id="section-toc.1-1.7.2.8">
+                <p id="section-toc.1-1.7.2.8.1"><a href="#section-7.8" class="auto internal xref">7.8</a>.  <a href="#name-clock-skew" class="internal xref">Clock Skew</a></p>
 </li>
             </ul>
 </li>
@@ -1705,45 +1708,10 @@ transaction.<a href="#section-3.3-3.3.1" class="pilcrow">¶</a></p>
             <p id="section-3.3-3.4.1">It <span class="bcp14">MUST NOT</span> disclose the ITID.<a href="#section-3.3-3.4.1" class="pilcrow">¶</a></p>
 </li>
         </ul>
-<p id="section-3.3-4">The AS <span class="bcp14">SHOULD</span> generate <code>txn</code> using keyed derivation, as follows:<a href="#section-3.3-4" class="pilcrow">¶</a></p>
-<div class="alignLeft art-text artwork" id="section-3.3-5">
-<pre>
-txn = BASE64URL(HMAC-SHA-256(K_txn, ITID || UTF8(aud)))
-</pre><a href="#section-3.3-5" class="pilcrow">¶</a>
-</div>
-<p id="section-3.3-6">where:<a href="#section-3.3-6" class="pilcrow">¶</a></p>
-<ul class="normal">
-<li class="normal" id="section-3.3-7.1">
-            <p id="section-3.3-7.1.1"><code>K_txn</code> is a secret key of at least 256 bits, known only to the AS
-and used only for this purpose;<a href="#section-3.3-7.1.1" class="pilcrow">¶</a></p>
-</li>
-          <li class="normal" id="section-3.3-7.2">
-            <p id="section-3.3-7.2.1"><code>ITID</code> is the internal transaction identifier, which <span class="bcp14">MUST</span> be of
-fixed length for a given <code>K_txn</code>;<a href="#section-3.3-7.2.1" class="pilcrow">¶</a></p>
-</li>
-          <li class="normal" id="section-3.3-7.3">
-            <p id="section-3.3-7.3.1"><code>aud</code> is the value of the Txn-AT's <code>aud</code> claim;<a href="#section-3.3-7.3.1" class="pilcrow">¶</a></p>
-</li>
-          <li class="normal" id="section-3.3-7.4">
-            <p id="section-3.3-7.4.1"><code>||</code> denotes concatenation;<a href="#section-3.3-7.4.1" class="pilcrow">¶</a></p>
-</li>
-          <li class="normal" id="section-3.3-7.5">
-            <p id="section-3.3-7.5.1">HMAC is as defined in <span>[<a href="#RFC2104" class="cite xref">RFC2104</a>]</span>; and<a href="#section-3.3-7.5.1" class="pilcrow">¶</a></p>
-</li>
-          <li class="normal" id="section-3.3-7.6">
-            <p id="section-3.3-7.6.1">BASE64URL is base64url encoding without padding.<a href="#section-3.3-7.6.1" class="pilcrow">¶</a></p>
-</li>
-        </ul>
-<p id="section-3.3-8">The output <span class="bcp14">MAY</span> be truncated to no fewer than 128 bits.<a href="#section-3.3-8" class="pilcrow">¶</a></p>
-<p id="section-3.3-9">Keyed derivation lets the AS recompute the <code>txn</code> value for any
-transaction and audience without storing a mapping. The AS can
-therefore correlate a transaction across resource servers for audit,
-while no other party can. An AS that rotates <code>K_txn</code> needs to retain
-retired keys, or record which key each transaction used, for as long
-as it requires this audit capability.<a href="#section-3.3-9" class="pilcrow">¶</a></p>
-<p id="section-3.3-10">An AS <span class="bcp14">MAY</span> use another method, such as a random value per audience with
-a mapping table stored at the AS, provided it meets the requirements
-in this section.<a href="#section-3.3-10" class="pilcrow">¶</a></p>
+<p id="section-3.3-4">Any method satisfying the requirements above is acceptable, such as a
+random value per audience with a mapping table stored at the AS. For
+one possible construction using keyed derivation, see
+<a href="#itid-generation" class="auto internal xref">Section 7.6</a>.<a href="#section-3.3-4" class="pilcrow">¶</a></p>
 </section>
 </div>
 <div id="context">
@@ -2195,27 +2163,71 @@ fails to follow this rule would turn Txn-ATs into signed but unverified
 assertions.<a href="#section-7.5-1" class="pilcrow">¶</a></p>
 </section>
 </div>
-<div id="compromise-of-ktxn">
+<div id="itid-generation">
 <section id="section-7.6">
-        <h3 id="name-compromise-of-k_txn">
-<a href="#section-7.6" class="section-number selfRef">7.6. </a><a href="#name-compromise-of-k_txn" class="section-name selfRef">Compromise of K_txn</a>
+        <h3 id="name-generating-transaction-iden">
+<a href="#section-7.6" class="section-number selfRef">7.6. </a><a href="#name-generating-transaction-iden" class="section-name selfRef">Generating Transaction Identifiers</a>
         </h3>
-<p id="section-7.6-1">Disclosure of <code>K_txn</code> allows the holder, together with knowledge of
+<p id="section-7.6-1">One way to generate <code>txn</code> values satisfying the requirements in
+<a href="#txn-generation" class="auto internal xref">Section 3.3</a> is keyed derivation:<a href="#section-7.6-1" class="pilcrow">¶</a></p>
+<div class="alignLeft art-text artwork" id="section-7.6-2">
+<pre>
+txn = BASE64URL(HMAC-SHA-256(K_txn, ITID || UTF8(aud)))
+</pre><a href="#section-7.6-2" class="pilcrow">¶</a>
+</div>
+<p id="section-7.6-3">where:<a href="#section-7.6-3" class="pilcrow">¶</a></p>
+<ul class="normal">
+<li class="normal" id="section-7.6-4.1">
+            <p id="section-7.6-4.1.1"><code>K_txn</code> is a secret key of at least 256 bits, known only to the AS
+and used only for this purpose;<a href="#section-7.6-4.1.1" class="pilcrow">¶</a></p>
+</li>
+          <li class="normal" id="section-7.6-4.2">
+            <p id="section-7.6-4.2.1"><code>ITID</code> is the internal transaction identifier, which <span class="bcp14">MUST</span> be of
+fixed length for a given <code>K_txn</code>;<a href="#section-7.6-4.2.1" class="pilcrow">¶</a></p>
+</li>
+          <li class="normal" id="section-7.6-4.3">
+            <p id="section-7.6-4.3.1"><code>aud</code> is the value of the Txn-AT's <code>aud</code> claim;<a href="#section-7.6-4.3.1" class="pilcrow">¶</a></p>
+</li>
+          <li class="normal" id="section-7.6-4.4">
+            <p id="section-7.6-4.4.1"><code>||</code> denotes concatenation;<a href="#section-7.6-4.4.1" class="pilcrow">¶</a></p>
+</li>
+          <li class="normal" id="section-7.6-4.5">
+            <p id="section-7.6-4.5.1">HMAC is as defined in <span>[<a href="#RFC2104" class="cite xref">RFC2104</a>]</span>; and<a href="#section-7.6-4.5.1" class="pilcrow">¶</a></p>
+</li>
+          <li class="normal" id="section-7.6-4.6">
+            <p id="section-7.6-4.6.1">BASE64URL is base64url encoding without padding.<a href="#section-7.6-4.6.1" class="pilcrow">¶</a></p>
+</li>
+        </ul>
+<p id="section-7.6-5">The output <span class="bcp14">MAY</span> be truncated to no fewer than 128 bits.<a href="#section-7.6-5" class="pilcrow">¶</a></p>
+<p id="section-7.6-6">Keyed derivation lets the AS recompute the <code>txn</code> value for any
+transaction and audience without storing a mapping. The AS can
+therefore correlate a transaction across resource servers for audit,
+while no other party can. An AS that rotates <code>K_txn</code> needs to retain
+retired keys, or record which key each transaction used, for as long
+as it requires this audit capability.<a href="#section-7.6-6" class="pilcrow">¶</a></p>
+</section>
+</div>
+<div id="compromise-of-ktxn">
+<section id="section-7.7">
+        <h3 id="name-compromise-of-k_txn">
+<a href="#section-7.7" class="section-number selfRef">7.7. </a><a href="#name-compromise-of-k_txn" class="section-name selfRef">Compromise of K_txn</a>
+        </h3>
+<p id="section-7.7-1">Disclosure of <code>K_txn</code> allows the holder, together with knowledge of
 ITIDs, to correlate <code>txn</code> values across resource servers. It does not
 allow forging Txn-ATs. Because ITIDs are never disclosed outside the AS,
 correlating <code>txn</code> values additionally requires access to AS internal
 state. The AS <span class="bcp14">SHOULD</span> protect <code>K_txn</code> with the same rigor as its token
-signing keys.<a href="#section-7.6-1" class="pilcrow">¶</a></p>
+signing keys.<a href="#section-7.7-1" class="pilcrow">¶</a></p>
 </section>
 </div>
 <div id="clock-skew">
-<section id="section-7.7">
+<section id="section-7.8">
         <h3 id="name-clock-skew">
-<a href="#section-7.7" class="section-number selfRef">7.7. </a><a href="#name-clock-skew" class="section-name selfRef">Clock Skew</a>
+<a href="#section-7.8" class="section-number selfRef">7.8. </a><a href="#name-clock-skew" class="section-name selfRef">Clock Skew</a>
         </h3>
-<p id="section-7.7-1">Short lifetimes increase sensitivity to clock skew. Resource servers
+<p id="section-7.8-1">Short lifetimes increase sensitivity to clock skew. Resource servers
 <span class="bcp14">SHOULD</span> allow no more than a small leeway, such as 30 seconds, when
-validating <code>exp</code> and <code>iat</code>.<a href="#section-7.7-1" class="pilcrow">¶</a></p>
+validating <code>exp</code> and <code>iat</code>.<a href="#section-7.8-1" class="pilcrow">¶</a></p>
 </section>
 </div>
 </section>

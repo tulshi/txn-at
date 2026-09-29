@@ -99,8 +99,9 @@ Table of Contents
      7.3.  Durable Credentials
      7.4.  Transaction Handle Theft
      7.5.  Context Integrity
-     7.6.  Compromise of K_txn
-     7.7.  Clock Skew
+     7.6.  Generating Transaction Identifiers
+     7.7.  Compromise of K_txn
+     7.8.  Clock Skew
    8.  Privacy Considerations
      8.1.  Transaction Correlation
      8.2.  Other Correlating Claims
@@ -344,38 +345,9 @@ Table of Contents
 
    *  It MUST NOT disclose the ITID.
 
-   The AS SHOULD generate txn using keyed derivation, as follows:
-
-   txn = BASE64URL(HMAC-SHA-256(K_txn, ITID || UTF8(aud)))
-
-   where:
-
-   *  K_txn is a secret key of at least 256 bits, known only to the AS
-      and used only for this purpose;
-
-   *  ITID is the internal transaction identifier, which MUST be of
-      fixed length for a given K_txn;
-
-   *  aud is the value of the Txn-AT's aud claim;
-
-   *  || denotes concatenation;
-
-   *  HMAC is as defined in [RFC2104]; and
-
-   *  BASE64URL is base64url encoding without padding.
-
-   The output MAY be truncated to no fewer than 128 bits.
-
-   Keyed derivation lets the AS recompute the txn value for any
-   transaction and audience without storing a mapping.  The AS can
-   therefore correlate a transaction across resource servers for audit,
-   while no other party can.  An AS that rotates K_txn needs to retain
-   retired keys, or record which key each transaction used, for as long
-   as it requires this audit capability.
-
-   An AS MAY use another method, such as a random value per audience
-   with a mapping table stored at the AS, provided it meets the
-   requirements in this section.
+   Any method satisfying the requirements above is acceptable, such as a
+   random value per audience with a mapping table stored at the AS.  For
+   one possible construction using keyed derivation, see Section 7.6.
 
 3.4.  Transaction Context
 
@@ -681,7 +653,39 @@ Table of Contents
    An AS that fails to follow this rule would turn Txn-ATs into signed
    but unverified assertions.
 
-7.6.  Compromise of K_txn
+7.6.  Generating Transaction Identifiers
+
+   One way to generate txn values satisfying the requirements in
+   Section 3.3 is keyed derivation:
+
+   txn = BASE64URL(HMAC-SHA-256(K_txn, ITID || UTF8(aud)))
+
+   where:
+
+   *  K_txn is a secret key of at least 256 bits, known only to the AS
+      and used only for this purpose;
+
+   *  ITID is the internal transaction identifier, which MUST be of
+      fixed length for a given K_txn;
+
+   *  aud is the value of the Txn-AT's aud claim;
+
+   *  || denotes concatenation;
+
+   *  HMAC is as defined in [RFC2104]; and
+
+   *  BASE64URL is base64url encoding without padding.
+
+   The output MAY be truncated to no fewer than 128 bits.
+
+   Keyed derivation lets the AS recompute the txn value for any
+   transaction and audience without storing a mapping.  The AS can
+   therefore correlate a transaction across resource servers for audit,
+   while no other party can.  An AS that rotates K_txn needs to retain
+   retired keys, or record which key each transaction used, for as long
+   as it requires this audit capability.
+
+7.7.  Compromise of K_txn
 
    Disclosure of K_txn allows the holder, together with knowledge of
    ITIDs, to correlate txn values across resource servers.  It does not
@@ -690,7 +694,7 @@ Table of Contents
    internal state.  The AS SHOULD protect K_txn with the same rigor as
    its token signing keys.
 
-7.7.  Clock Skew
+7.8.  Clock Skew
 
    Short lifetimes increase sensitivity to clock skew.  Resource servers
    SHOULD allow no more than a small leeway, such as 30 seconds, when
