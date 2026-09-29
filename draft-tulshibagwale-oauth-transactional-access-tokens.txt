@@ -1,0 +1,1141 @@
+
+
+
+
+Web Authorization Protocol                              A. Tulshibagwale
+Internet-Draft                                               CrowdStrike
+Intended status: Standards Track                       29 September 2026
+Expires: 2 April 2027
+
+
+                      Transactional Access Tokens
+      draft-tulshibagwale-oauth-transactional-access-tokens-latest
+
+Abstract
+
+   OAuth 2.0 access tokens are typically scoped to a session rather than
+   to a transaction.  They carry no transaction identifier and no
+   context beyond scope.  This document defines Transactional Access
+   Tokens: a profile of JSON Web Token (JWT) access tokens that carries
+   a transaction identifier and authorization server-asserted
+   transaction context, has a very short lifetime, and is audienced to a
+   single resource server.  Transactional Access Tokens align with the
+   claims and semantics of OAuth Transaction Tokens, so that transaction
+   context can flow from the authorization server to a resource server
+   and onward into that resource server's trust domain.  A primary use
+   case is task-scoped authorization of AI agents, where the
+   authorization server makes a fresh policy decision for each
+   transaction.
+
+About This Document
+
+   This note is to be removed before publishing as an RFC.
+
+   Status information for this document may be found at
+   https://datatracker.ietf.org/doc/draft-tulshibagwale-oauth-
+   transactional-access-tokens/.
+
+   Discussion of this document takes place on the Web Authorization
+   Protocol Working Group mailing list (mailto:oauth@ietf.org), which is
+   archived at https://mailarchive.ietf.org/arch/browse/oauth/.
+   Subscribe at https://www.ietf.org/mailman/listinfo/oauth/.
+
+Status of This Memo
+
+   This Internet-Draft is submitted in full conformance with the
+   provisions of BCP 78 and BCP 79.
+
+   Internet-Drafts are working documents of the Internet Engineering
+   Task Force (IETF).  Note that other groups may also distribute
+   working documents as Internet-Drafts.  The list of current Internet-
+   Drafts is at https://datatracker.ietf.org/drafts/current/.
+
+   Internet-Drafts are draft documents valid for a maximum of six months
+   and may be updated, replaced, or obsoleted by other documents at any
+   time.  It is inappropriate to use Internet-Drafts as reference
+   material or to cite them other than as "work in progress."
+
+   This Internet-Draft will expire on 2 April 2027.
+
+Copyright Notice
+
+   Copyright (c) 2026 IETF Trust and the persons identified as the
+   document authors.  All rights reserved.
+
+   This document is subject to BCP 78 and the IETF Trust's Legal
+   Provisions Relating to IETF Documents (https://trustee.ietf.org/
+   license-info) in effect on the date of publication of this document.
+   Please review these documents carefully, as they describe your rights
+   and restrictions with respect to this document.  Code Components
+   extracted from this document must include Revised BSD License text as
+   described in Section 4.e of the Trust Legal Provisions and are
+   provided without warranty as described in the Revised BSD License.
+
+Table of Contents
+
+   1.  Introduction
+     1.1.  Requirements Language
+     1.2.  Terminology
+   2.  Overview
+   3.  Token Format
+     3.1.  JOSE Header
+     3.2.  Claims
+     3.3.  Transaction Identifier Generation
+     3.4.  Transaction Context
+     3.5.  Token Lifetime
+   4.  Token Request
+     4.1.  Supported Grants
+     4.2.  Requesting a Txn-AT
+     4.3.  Request Parameters
+     4.4.  Policy Evaluation
+     4.5.  Transaction Handle
+     4.6.  Token Response
+     4.7.  Errors
+   5.  Resource Server Processing
+   6.  Interoperability with Transaction Tokens
+   7.  Security Considerations
+     7.1.  Token Confusion
+     7.2.  Replay
+     7.3.  Durable Credentials
+     7.4.  Transaction Handle Theft
+     7.5.  Context Integrity
+     7.6.  Compromise of K_txn
+     7.7.  Clock Skew
+   8.  Privacy Considerations
+     8.1.  Transaction Correlation
+     8.2.  Other Correlating Claims
+     8.3.  AS as Observer
+   9.  Operational Considerations
+   10. IANA Considerations
+     10.1.  Media Type Registration
+     10.2.  OAuth URI Registration
+     10.3.  OAuth Parameters Registration
+     10.4.  OAuth Extensions Error Registration
+     10.5.  OAuth Authorization Server Metadata Registration
+     10.6.  OAuth Dynamic Client Registration Metadata Registration
+   11. References
+     11.1.  Normative References
+     11.2.  Informative References
+   Appendix A.  Comparison with Related Tokens
+   Appendix B.  Examples
+     B.1.  Token Exchange Request (New Transaction)
+     B.2.  Token Response
+     B.3.  Decoded Txn-AT
+     B.4.  Additional Txn-AT for the Same Transaction (Refresh Token
+           Grant)
+   Appendix C.  Open Issues
+   Acknowledgments
+   Document History
+   Contributors
+   Author's Address
+
+1.  Introduction
+
+   OAuth 2.0 [RFC6749] access tokens represent an authorization grant
+   for a session.  Access token lifetimes are often short, but the
+   authority behind them is durable: a client holding a refresh token or
+   client credential can obtain new access tokens without any per-
+   transaction decision by the authorization server (AS).  Access tokens
+   convey what the client may do (typically via scope), but they do not
+   convey why, in what transaction, or under what context.
+
+   OAuth Transaction Tokens [TXN-TOKENS] (Txn-Tokens) address a related
+   problem inside a trust domain.  A Txn-Token is short-lived, carries a
+   transaction identifier (txn) and transaction context, and is
+   audienced to the trust domain rather than to any single workload.
+   Txn-Tokens are not intended for use across trust domain boundaries,
+   and a resource server outside the trust domain that issued a Txn-
+   Token receives none of that context.
+
+   This document defines Transactional Access Tokens (Txn-ATs).  A Txn-
+   AT is an OAuth access token, based on the JWT access token profile
+   [RFC9068], that also carries the transaction identifier and context
+   semantics of a Txn-Token.  Unlike a Txn-Token, a Txn-AT is audienced
+   to a single resource server.
+
+   Txn-ATs provide the following benefits:
+
+   1.  Resource servers receive AS-asserted transaction context, not
+       only scope.
+
+   2.  A client, such as an AI agent authorized for a specific task, can
+       be issued a token bounded to that task, with no more durable
+       permission than the task requires.  The AS evaluates policy for
+       every transaction and can deny any individual transaction,
+       placing the AS in control of each authorization decision.
+
+   3.  The transaction identifier and context can be carried from the
+       resource server into its own trust domain via Txn-Tokens
+       (Section 6).
+
+   In the model defined here, consent and client authority are durable,
+   while tokens are per-transaction.
+
+1.1.  Requirements Language
+
+   The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT",
+   "SHOULD", "SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED", "MAY", and
+   "OPTIONAL" in this document are to be interpreted as described in
+   BCP 14 [RFC2119] [RFC8174] when, and only when, they appear in all
+   capitals, as shown here.
+
+1.2.  Terminology
+
+   This document uses the terms "access token", "authorization server",
+   "client", "refresh token", and "resource server" defined in
+   [RFC6749], and the terms "Transaction Token", "Txn-Token",
+   "Transaction Token Service", "trust domain", and "workload" defined
+   in [TXN-TOKENS].
+
+   Transactional Access Token (Txn-AT):  An access token conforming to
+      this specification.
+
+   Transaction:  A unit of work, such as an AI agent task, for which the
+      AS makes an authorization decision and which may span requests to
+      one or more resource servers.
+
+   Internal Transaction Identifier (ITID):  A value generated by the AS
+      that uniquely identifies a transaction.  The ITID is known only to
+      the AS and is never disclosed to clients or resource servers.
+
+   Transaction Handle:  An opaque value issued by the AS to a client,
+      which the client uses to request additional Txn-ATs for the same
+      transaction.
+
+   Transaction Context:  Context about a transaction that the AS asserts
+      in a Txn-AT, after evaluating policy and the request context.
+
+2.  Overview
+
+   +--------+  (1) Token Request             +---------------+
+   |        |  (resource=RS1, grant, ...)    |               |
+   |        |------------------------------->|               |
+   |        |  (2) Txn-AT (aud=RS1, txn=T1)  | Authorization |
+   |        |      + txn_handle              |    Server     |
+   |        |<-------------------------------|  (policy on   |
+   | Client |  (3) Token Request             | every request)|
+   |        |  (resource=RS2, txn_handle)    |               |
+   |        |------------------------------->|               |
+   |        |  (4) Txn-AT (aud=RS2, txn=T2)  |               |
+   |        |<-------------------------------|               |
+   |        |                                +---------------+
+   |        |  (5) Txn-AT (aud=RS1) +-----+   (7) Txn-Token
+   |        |---------------------->| RS1 |---> (txn=T1) ---> internal
+   |        |  (6) Txn-AT (aud=RS2) +-----+                  workloads
+   |        |---------------------->| RS2 |
+   +--------+                       +-----+
+
+                 Figure 1: Transactional Access Token Flow
+
+   1.  The client requests a Txn-AT for resource server RS1 using a
+       supported grant (Section 4.1).
+
+   2.  The AS evaluates policy and issues a Txn-AT audienced to RS1.
+       The Txn-AT carries a txn value derived for RS1.  The AS also
+       returns a transaction handle.
+
+   3.  For the same transaction, the client requests a Txn-AT for RS2
+       and presents the transaction handle.
+
+   4.  The AS evaluates policy again and issues a Txn-AT audienced to
+       RS2, with a different txn value that cannot be correlated with
+       the value for RS1.
+
+   5.  and 6.  The client presents each Txn-AT to its resource server.
+
+   6.  A resource server MAY exchange the Txn-AT for a Txn-Token within
+       its own trust domain (Section 6).
+
+3.  Token Format
+
+   A Txn-AT is a JWT [RFC7519] that conforms to [RFC9068], except as
+   modified by this section.
+
+3.1.  JOSE Header
+
+   Txn-ATs MUST include the typ header parameter with the value
+   txnat+jwt.  This deviates from Section 2.1 of [RFC9068], which
+   requires at+jwt.  The distinct type is intentional: it causes
+   resource servers that do not implement this specification to reject
+   Txn-ATs, rather than accept them as ordinary access tokens and ignore
+   their transactional semantics.  It also prevents confusion between
+   Txn-ATs, ordinary JWT access tokens, and Txn-Tokens (Section 7.1).
+
+3.2.  Claims
+
+   The following claims are used in Txn-ATs.  Claims not listed here MAY
+   be included as permitted by [RFC9068], subject to Section 8.
+
+   +=======================+=============+============================+
+   | Claim                 | Requirement | Description                |
+   +=======================+=============+============================+
+   | iss                   | REQUIRED    | As defined in [RFC9068].   |
+   +-----------------------+-------------+----------------------------+
+   | aud                   | REQUIRED    | Identifier of exactly one  |
+   |                       |             | resource server.  MUST be  |
+   |                       |             | a single string value.     |
+   +-----------------------+-------------+----------------------------+
+   | sub                   | REQUIRED    | As defined in [RFC9068].   |
+   |                       |             | See Section 8 regarding    |
+   |                       |             | pairwise identifiers.      |
+   +-----------------------+-------------+----------------------------+
+   | client_id             | REQUIRED    | As defined in [RFC9068].   |
+   +-----------------------+-------------+----------------------------+
+   | iat                   | REQUIRED    | As defined in [RFC9068].   |
+   +-----------------------+-------------+----------------------------+
+   | exp                   | REQUIRED    | See Section 3.5.           |
+   +-----------------------+-------------+----------------------------+
+   | jti                   | REQUIRED    | Unique per token.  MUST    |
+   |                       |             | NOT be derived from the    |
+   |                       |             | ITID.                      |
+   +-----------------------+-------------+----------------------------+
+   | txn                   | REQUIRED    | Transaction identifier, as |
+   |                       |             | defined in Section 2.2 of  |
+   |                       |             | [RFC8417] and generated    |
+   |                       |             | per Section 3.3.           |
+   +-----------------------+-------------+----------------------------+
+   | tctx                  | RECOMMENDED | Transaction context        |
+   |                       |             | asserted by the AS, with   |
+   |                       |             | semantics as defined in    |
+   |                       |             | [TXN-TOKENS].  See         |
+   |                       |             | Section 3.4.               |
+   +-----------------------+-------------+----------------------------+
+   | rctx                  | OPTIONAL    | Requester context asserted |
+   |                       |             | by the AS, with semantics  |
+   |                       |             | as defined in              |
+   |                       |             | [TXN-TOKENS].  See         |
+   |                       |             | Section 3.4.               |
+   +-----------------------+-------------+----------------------------+
+   | scope                 | OPTIONAL    | Scope granted for this     |
+   |                       |             | transaction.               |
+   +-----------------------+-------------+----------------------------+
+   | authorization_details | OPTIONAL    | Granted authorization      |
+   |                       |             | details, as defined in     |
+   |                       |             | [RFC9396].                 |
+   +-----------------------+-------------+----------------------------+
+   | act                   | CONDITIONAL | REQUIRED when the Txn-AT   |
+   |                       |             | is issued via token        |
+   |                       |             | exchange with an actor     |
+   |                       |             | token, as defined in       |
+   |                       |             | [RFC8693].                 |
+   +-----------------------+-------------+----------------------------+
+   | cnf                   | CONDITIONAL | REQUIRED when the Txn-AT   |
+   |                       |             | is sender-constrained.     |
+   +-----------------------+-------------+----------------------------+
+
+                          Table 1: Txn-AT Claims
+
+3.3.  Transaction Identifier Generation
+
+   When the AS begins a new transaction, it MUST generate an ITID with
+   at least 128 bits of entropy.
+
+   The txn value in each Txn-AT MUST satisfy the following requirements:
+
+   *  It MUST be the same for all Txn-ATs issued for the same
+      transaction and the same audience.
+
+   *  It MUST be different for different audiences in the same
+      transaction.
+
+   *  It MUST NOT allow any party other than the AS to determine whether
+      two txn values with different audiences belong to the same
+      transaction.
+
+   *  It MUST NOT disclose the ITID.
+
+   The AS SHOULD generate txn using keyed derivation, as follows:
+
+   txn = BASE64URL(HMAC-SHA-256(K_txn, ITID || UTF8(aud)))
+
+   where:
+
+   *  K_txn is a secret key of at least 256 bits, known only to the AS
+      and used only for this purpose;
+
+   *  ITID is the internal transaction identifier, which MUST be of
+      fixed length for a given K_txn;
+
+   *  aud is the value of the Txn-AT's aud claim;
+
+   *  || denotes concatenation;
+
+   *  HMAC is as defined in [RFC2104]; and
+
+   *  BASE64URL is base64url encoding without padding.
+
+   The output MAY be truncated to no fewer than 128 bits.
+
+   Keyed derivation lets the AS recompute the txn value for any
+   transaction and audience without storing a mapping.  The AS can
+   therefore correlate a transaction across resource servers for audit,
+   while no other party can.  An AS that rotates K_txn needs to retain
+   retired keys, or record which key each transaction used, for as long
+   as it requires this audit capability.
+
+   An AS MAY use another method, such as a random value per audience
+   with a mapping table stored at the AS, provided it meets the
+   requirements in this section.
+
+3.4.  Transaction Context
+
+   The AS alone determines the values of tctx and rctx, based on policy
+   and the request context.
+
+   The AS MUST NOT copy client-supplied values into tctx or rctx without
+   first evaluating them against policy.
+
+   If the AS supports [RFC9396], it MAY use authorization_details from
+   the request as an input to policy.  The AS MUST NOT copy
+   authorization_details into tctx unless it has evaluated them against
+   policy.
+
+   If both authorization_details and tctx appear in a Txn-AT:
+
+   *  authorization_details represents what was granted; and
+
+   *  tctx represents the context the AS asserts about the transaction.
+
+   Inputs the AS MAY use when determining transaction context include:
+
+   *  the authenticated subject and the properties of that
+      authentication, such as authentication time, method, and assurance
+      level;
+
+   *  the client's registration metadata and authentication method, and
+      any client or workload attestation;
+
+   *  claims in a subject token or actor token, in token exchange flows;
+
+   *  the resource indicator ([RFC8707]), scope, and
+      authorization_details in the request;
+
+   *  the Txn-Token request context parameters defined in [TXN-TOKENS];
+
+   *  properties of the request environment that the AS observes, such
+      as the source network address; and
+
+   *  the results of policy evaluation for the transaction.
+
+   The AS SHOULD include in tctx and rctx only the context that the
+   audience resource server needs (Section 8).
+
+3.5.  Token Lifetime
+
+   Txn-ATs are intended to be valid for about as long as a single
+   transaction.
+
+   *  The difference between exp and iat SHOULD NOT exceed 300 seconds.
+
+   *  The AS SHOULD choose the shortest lifetime compatible with the
+      expected duration of the transaction.
+
+   *  The AS MUST NOT issue a Txn-AT whose exp is later than the expiry
+      of the associated transaction handle, if one exists.
+
+4.  Token Request
+
+4.1.  Supported Grants
+
+   Txn-ATs MUST be issued only at the token endpoint, using one of the
+   following grants:
+
+   *  Token Exchange [RFC8693];
+
+   *  the refresh token grant (Section 6 of [RFC6749]); or
+
+   *  the client credentials grant (Section 4.4 of [RFC6749]).
+
+   The AS MUST NOT issue Txn-ATs directly from the authorization code
+   grant.  The authorization code grant MAY be used to obtain user
+   consent and a refresh token, which the client then uses to request
+   Txn-ATs.
+
+   The token exchange grant is used when the client holds a source
+   token, for example a token representing the user as the subject and
+   the client (such as an AI agent) as the actor.  In this case the
+   request resembles a Txn-Token request as defined in [TXN-TOKENS].
+
+4.2.  Requesting a Txn-AT
+
+   To request a Txn-AT, the client includes the requested_token_type
+   parameter with the value urn:ietf:params:oauth:token-
+   type:txn_access_token.
+
+   *  With the token exchange grant, this parameter is used as defined
+      in [RFC8693].
+
+   *  This document also permits this parameter with the refresh token
+      and client credentials grants, where it has the same meaning.
+
+   If the client's registration metadata includes
+   transactional_access_tokens_required with the value true
+   (Section 10.6), the AS MUST issue only Txn-ATs to that client,
+   whether or not requested_token_type is present.
+
+4.3.  Request Parameters
+
+   The following parameters apply to Txn-AT requests:
+
+   resource:  REQUIRED.  Exactly one resource indicator, as defined in
+      [RFC8707], identifying the resource server the Txn-AT is for.  If
+      the request contains zero or more than one resource value, the AS
+      MUST reject it with the invalid_target error.  In token exchange
+      requests, the client SHOULD NOT use the audience parameter.  If it
+      does use it, the resulting audience MUST resolve to a single
+      resource server.
+
+   txn_handle:  OPTIONAL.  A transaction handle previously issued to
+      this client (Section 4.5).  If present, the request is for an
+      additional Txn-AT in the existing transaction.  If absent, the AS
+      begins a new transaction.
+
+   scope, authorization_details:  OPTIONAL.  As defined in [RFC6749] and
+      [RFC9396].  These are inputs to policy only (Section 3.4).
+
+   Txn-Token request context parameters:  OPTIONAL.  Clients MAY include
+      the request context and request details parameters defined in
+      [TXN-TOKENS].  These are inputs to policy only.  The AS MUST NOT
+      copy them into tctx or rctx without evaluation.
+
+   Extension parameters:  The AS MAY accept additional parameters as
+      policy inputs, subject to the same rule.
+
+4.4.  Policy Evaluation
+
+   The AS MUST evaluate policy for every Txn-AT request.  The AS MAY
+   deny a request even when the presented grant, credential, refresh
+   token, or transaction handle is valid.
+
+   When the request includes a transaction handle, the AS MAY enforce
+   transaction-level policy, for example:
+
+   *  limiting the set of resource servers the transaction may access;
+
+   *  limiting the number of Txn-ATs issued for the transaction; or
+
+   *  limiting the transaction's total duration.
+
+   If the AS denies a request on policy grounds, it MUST return the
+   transaction_denied error (Section 4.7).
+
+4.5.  Transaction Handle
+
+   When the AS begins a new transaction, it MUST include a transaction
+   handle in the token response (Section 4.6).  The transaction handle:
+
+   *  MUST be opaque to the client and MUST contain at least 128 bits of
+      entropy;
+
+   *  MUST be bound to the client to which it was issued.  The AS MUST
+      reject a handle presented by a different client;
+
+   *  MUST be bound to the transaction's subject.  In token exchange
+      requests, the AS MUST reject a handle if the subject of the
+      presented subject token differs from the transaction's subject;
+
+   *  SHOULD be bound to the same key as the Txn-ATs, when Txn-ATs are
+      sender-constrained;
+
+   *  MUST have an expiry set by the AS; and
+
+   *  MUST NOT be included in any Txn-AT or otherwise disclosed to
+      resource servers.
+
+   If the handle is unknown, expired, or fails any of the binding checks
+   above, the AS MUST return the invalid_txn_handle error.
+
+4.6.  Token Response
+
+   A successful response follows Section 5.1 of [RFC6749] and, for token
+   exchange, Section 2.2 of [RFC8693], with these additions:
+
+   *  The issued_token_type parameter, if present, MUST be
+      urn:ietf:params:oauth:token-type:txn_access_token.
+
+   *  The txn_handle parameter MUST be present when a new transaction
+      was started.  It MAY be present in responses for an existing
+      transaction.
+
+   *  In token exchange responses, the AS MUST NOT include a refresh
+      token.
+
+   *  In refresh token grant responses, the AS MAY rotate the refresh
+      token as described in [RFC9700].
+
+4.7.  Errors
+
+   In addition to the errors defined in [RFC6749], [RFC8693], and
+   [RFC8707], this document defines the following token endpoint errors:
+
+   invalid_txn_handle:  The transaction handle is unknown, expired, or
+      not bound to this client or subject.
+
+   transaction_denied:  The AS denied the transaction based on policy.
+
+5.  Resource Server Processing
+
+   A resource server that accepts Txn-ATs MUST validate them as
+   specified in Section 4 of [RFC9068], with the following
+   modifications:
+
+   1.  The resource server MUST verify that the typ header is txnat+jwt.
+
+   2.  The resource server MUST verify that aud is a single value that
+       identifies itself.
+
+   3.  The resource server MUST verify that txn is present.
+
+   4.  If the Txn-AT contains a cnf claim, the resource server MUST
+       verify proof of possession, for example as specified in [RFC9449]
+       or [RFC8705].
+
+   5.  The resource server MUST NOT accept a Txn-Token (typ value
+       txntoken+jwt) as a Txn-AT.
+
+   A resource server MAY use tctx and rctx in its own authorization
+   decisions, and SHOULD record txn in audit logs.
+
+   A resource server that requires Txn-ATs for a resource MUST reject
+   ordinary access tokens (typ value at+jwt) for that resource.
+
+6.  Interoperability with Transaction Tokens
+
+   A resource server may call workloads within its own trust domain.  In
+   that case, it SHOULD obtain a Txn-Token from its Transaction Token
+   Service (TTS), rather than forwarding the Txn-AT, as follows:
+
+   *  The resource server presents the Txn-AT as the subject_token, with
+      a subject_token_type of urn:ietf:params:oauth:token-
+      type:txn_access_token.
+
+   *  The TTS MUST validate the Txn-AT as specified in Section 5,
+      including verifying that aud identifies the resource server
+      presenting it.
+
+   *  The TTS SHOULD set the Txn-Token's txn to the txn value from the
+      Txn-AT.  This preserves correlation within the resource server's
+      trust domain without enabling correlation with other resource
+      servers.
+
+   *  The TTS MAY use the Txn-AT's tctx and rctx as inputs when
+      determining the Txn-Token's context, subject to the TTS's own
+      policy.
+
+   Workloads MUST NOT accept a Txn-AT in place of a Txn-Token.
+
+7.  Security Considerations
+
+   The security considerations of [RFC6749], [RFC8693], [RFC9068],
+   [RFC9700], and [TXN-TOKENS] apply.
+
+7.1.  Token Confusion
+
+   Txn-ATs share claims with both JWT access tokens and Txn-Tokens,
+   which creates a risk of token confusion.  The distinct typ value and
+   a single-valued aud claim mitigate this risk:
+
+   *  resource servers reject Txn-Tokens, whose aud identifies a trust
+      domain and whose typ is txntoken+jwt;
+
+   *  workloads reject Txn-ATs, whose typ is txnat+jwt; and
+
+   *  resource servers that do not implement this specification reject
+      Txn-ATs because of their typ value.
+
+   Implementations MUST validate both typ and aud.
+
+7.2.  Replay
+
+   A bearer Txn-AT can be replayed within its lifetime.  This document
+   accepts that risk in exchange for keeping resource servers stateless,
+   and bounds it with a short lifetime (Section 3.5).
+
+   Txn-ATs SHOULD be sender-constrained using DPoP [RFC9449] or mutual
+   TLS [RFC8705].  Sender-constraining is especially important for AI
+   agents, where tokens may be exfiltrated through prompt injection or
+   tool misuse.  Resource servers that need single-use semantics can
+   track jti values, but this document does not require it.
+
+7.3.  Durable Credentials
+
+   The refresh tokens and client credentials used to obtain Txn-ATs
+   remain durable.  The security benefit of Txn-ATs depends on the AS
+   evaluating policy for every request and being able to deny individual
+   transactions.  An attacker who obtains such a credential can request
+   Txn-ATs, but remains subject to per-transaction policy.  Refresh
+   tokens used to obtain Txn-ATs SHOULD be sender-constrained or rotated
+   as described in [RFC9700].
+
+7.4.  Transaction Handle Theft
+
+   A stolen transaction handle alone does not allow an attacker to
+   obtain Txn-ATs, because the handle is bound to the client, and to the
+   subject and sender-constraining key where applicable (Section 4.5).
+
+7.5.  Context Integrity
+
+   Resource servers rely on tctx and rctx being asserted by the AS.
+   Because the AS never echoes unevaluated client input into these
+   claims (Section 3.4), a client cannot inject context into a Txn-AT.
+   An AS that fails to follow this rule would turn Txn-ATs into signed
+   but unverified assertions.
+
+7.6.  Compromise of K_txn
+
+   Disclosure of K_txn allows the holder, together with knowledge of
+   ITIDs, to correlate txn values across resource servers.  It does not
+   allow forging Txn-ATs.  Because ITIDs are never disclosed outside the
+   AS, correlating txn values additionally requires access to AS
+   internal state.  The AS SHOULD protect K_txn with the same rigor as
+   its token signing keys.
+
+7.7.  Clock Skew
+
+   Short lifetimes increase sensitivity to clock skew.  Resource servers
+   SHOULD allow no more than a small leeway, such as 30 seconds, when
+   validating exp and iat.
+
+8.  Privacy Considerations
+
+8.1.  Transaction Correlation
+
+   Per-audience txn values (Section 3.3) prevent resource servers from
+   using txn to correlate a transaction across resource servers.  Only
+   the AS can link a transaction across resource servers.  Cross-
+   resource-server forensic analysis therefore requires the AS's
+   cooperation.  This is an intentional trade-off.
+
+8.2.  Other Correlating Claims
+
+   Other claims can still enable correlation, even when txn values
+   differ:
+
+   *  sub: The AS SHOULD use pairwise subject identifiers per resource
+      server, similar to the pairwise identifiers defined in [OIDC].
+
+   *  client_id: This claim is the same across resource servers.
+      Correlation of the client's activity is therefore inherent.
+
+   *  jti: This claim MUST NOT be derived from the ITID or from txn.
+
+   *  tctx and rctx: The AS SHOULD include only the context the audience
+      resource server needs, and SHOULD avoid stable identifiers that
+      would enable correlation.
+
+   *  Timing: Tokens for the same transaction are issued close together
+      in time.  Resource servers that collude may be able to correlate
+      transactions by timing.  This residual risk is not addressed by
+      this document.
+
+8.3.  AS as Observer
+
+   The AS observes every transaction.  AS operators SHOULD apply
+   retention limits and access controls to transaction records.
+
+9.  Operational Considerations
+
+   Issuing a token for every transaction places the AS on the critical
+   path of each transaction:
+
+   *  Token issuance latency adds directly to transaction latency.
+
+   *  AS availability becomes critical to the resource servers that
+      require Txn-ATs.
+
+   *  Issuance volume scales with the number of transactions rather than
+      the number of sessions.
+
+   Deployments should plan for:
+
+   *  low-latency signing;
+
+   *  regional or distributed AS deployment;
+
+   *  capacity planning based on transaction rates; and
+
+   *  management of K_txn, including rotation and retention of retired
+      keys.
+
+10.  IANA Considerations
+
+10.1.  Media Type Registration
+
+   IANA is requested to register the following media type [RFC6838] in
+   the "Media Types" registry:
+
+   *  Type name: application
+
+   *  Subtype name: txnat+jwt
+
+   *  Required parameters: N/A
+
+   *  Optional parameters: N/A
+
+   *  Encoding considerations: binary.  A Txn-AT is a JWT; JWT values
+      are encoded as a series of base64url-encoded values (some of which
+      may be the empty string) separated by period ('.') characters.
+
+   *  Security considerations: See the Security Considerations section
+      of RFC XXXX.
+
+   *  Interoperability considerations: N/A
+
+   *  Published specification: RFC XXXX
+
+   *  Applications that use this media type: Applications that issue or
+      consume Transactional Access Tokens.
+
+   *  Fragment identifier considerations: N/A
+
+   *  Additional information: N/A
+
+   *  Person & email address to contact for further information: IETF
+      OAuth WG, oauth@ietf.org
+
+   *  Intended usage: COMMON
+
+   *  Restrictions on usage: none
+
+   *  Author: IETF OAuth WG
+
+   *  Change controller: IETF
+
+10.2.  OAuth URI Registration
+
+   IANA is requested to register the following value in the "OAuth URI"
+   registry established by [RFC6749]:
+
+   *  URN: urn:ietf:params:oauth:token-type:txn_access_token
+
+   *  Common Name: Transactional Access Token
+
+   *  Change Controller: IETF
+
+   *  Specification Document: RFC XXXX
+
+10.3.  OAuth Parameters Registration
+
+   IANA is requested to register the following parameter in the "OAuth
+   Parameters" registry established by [RFC6749]:
+
+   *  Parameter name: txn_handle
+
+   *  Parameter usage location: token request, token response
+
+   *  Change controller: IETF
+
+   *  Specification document(s): RFC XXXX
+
+10.4.  OAuth Extensions Error Registration
+
+   IANA is requested to register the following values in the "OAuth
+   Extensions Error Registry" established by [RFC6749]:
+
+   *  Name: invalid_txn_handle
+
+   *  Usage Location: token error response
+
+   *  Protocol Extension: Transactional Access Tokens
+
+   *  Change controller: IETF
+
+   *  Specification document(s): RFC XXXX
+
+   *  Name: transaction_denied
+
+   *  Usage Location: token error response
+
+   *  Protocol Extension: Transactional Access Tokens
+
+   *  Change controller: IETF
+
+   *  Specification document(s): RFC XXXX
+
+10.5.  OAuth Authorization Server Metadata Registration
+
+   IANA is requested to register the following value in the "OAuth
+   Authorization Server Metadata" registry established by [RFC8414]:
+
+   *  Metadata Name: transactional_access_tokens_supported
+
+   *  Metadata Description: Boolean value indicating whether the AS
+      supports issuing Transactional Access Tokens.
+
+   *  Change Controller: IETF
+
+   *  Specification Document(s): RFC XXXX
+
+10.6.  OAuth Dynamic Client Registration Metadata Registration
+
+   IANA is requested to register the following value in the "OAuth
+   Dynamic Client Registration Metadata" registry established by
+   [RFC7591]:
+
+   *  Client Metadata Name: transactional_access_tokens_required
+
+   *  Client Metadata Description: Boolean value indicating that the AS
+      issues only Transactional Access Tokens to this client.
+
+   *  Change Controller: IETF
+
+   *  Specification Document(s): RFC XXXX
+
+11.  References
+
+11.1.  Normative References
+
+   [RFC2104]  Krawczyk, H., Bellare, M., and R. Canetti, "HMAC: Keyed-
+              Hashing for Message Authentication", RFC 2104,
+              DOI 10.17487/RFC2104, February 1997,
+              <https://www.rfc-editor.org/rfc/rfc2104>.
+
+   [RFC2119]  Bradner, S., "Key words for use in RFCs to Indicate
+              Requirement Levels", BCP 14, RFC 2119,
+              DOI 10.17487/RFC2119, March 1997,
+              <https://www.rfc-editor.org/rfc/rfc2119>.
+
+   [RFC6749]  Hardt, D., Ed., "The OAuth 2.0 Authorization Framework",
+              RFC 6749, DOI 10.17487/RFC6749, October 2012,
+              <https://www.rfc-editor.org/rfc/rfc6749>.
+
+   [RFC7519]  Jones, M., Bradley, J., and N. Sakimura, "JSON Web Token
+              (JWT)", RFC 7519, DOI 10.17487/RFC7519, May 2015,
+              <https://www.rfc-editor.org/rfc/rfc7519>.
+
+   [RFC8174]  Leiba, B., "Ambiguity of Uppercase vs Lowercase in RFC
+              2119 Key Words", BCP 14, RFC 8174, DOI 10.17487/RFC8174,
+              May 2017, <https://www.rfc-editor.org/rfc/rfc8174>.
+
+   [RFC8414]  Jones, M., Sakimura, N., and J. Bradley, "OAuth 2.0
+              Authorization Server Metadata", RFC 8414,
+              DOI 10.17487/RFC8414, June 2018,
+              <https://www.rfc-editor.org/rfc/rfc8414>.
+
+   [RFC8417]  Hunt, P., Ed., Jones, M., Denniss, W., and M. Ansari,
+              "Security Event Token (SET)", RFC 8417,
+              DOI 10.17487/RFC8417, July 2018,
+              <https://www.rfc-editor.org/rfc/rfc8417>.
+
+   [RFC8693]  Jones, M., Nadalin, A., Campbell, B., Ed., Bradley, J.,
+              and C. Mortimore, "OAuth 2.0 Token Exchange", RFC 8693,
+              DOI 10.17487/RFC8693, January 2020,
+              <https://www.rfc-editor.org/rfc/rfc8693>.
+
+   [RFC8707]  Campbell, B., Bradley, J., and H. Tschofenig, "Resource
+              Indicators for OAuth 2.0", RFC 8707, DOI 10.17487/RFC8707,
+              February 2020, <https://www.rfc-editor.org/rfc/rfc8707>.
+
+   [RFC9068]  Bertocci, V., "JSON Web Token (JWT) Profile for OAuth 2.0
+              Access Tokens", RFC 9068, DOI 10.17487/RFC9068, October
+              2021, <https://www.rfc-editor.org/rfc/rfc9068>.
+
+   [TXN-TOKENS]
+              Tulshibagwale, A., Fletcher, G., and P. Kasselman,
+              "Transaction Tokens", Work in Progress, Internet-Draft,
+              draft-ietf-oauth-transaction-tokens-11, 30 July 2026,
+              <https://datatracker.ietf.org/doc/html/draft-ietf-oauth-
+              transaction-tokens-11>.
+
+11.2.  Informative References
+
+   [OIDC]     Sakimura, N., Bradley, J., Jones, M., Medeiros, B. de.,
+              and C. Mortimore, "OpenID Connect Core 1.0 incorporating
+              errata set 2", 15 December 2023,
+              <https://openid.net/specs/openid-connect-core-1_0.html>.
+
+   [RFC6838]  Freed, N., Klensin, J., and T. Hansen, "Media Type
+              Specifications and Registration Procedures", BCP 13,
+              RFC 6838, DOI 10.17487/RFC6838, January 2013,
+              <https://www.rfc-editor.org/rfc/rfc6838>.
+
+   [RFC7591]  Richer, J., Ed., Jones, M., Bradley, J., Machulak, M., and
+              P. Hunt, "OAuth 2.0 Dynamic Client Registration Protocol",
+              RFC 7591, DOI 10.17487/RFC7591, July 2015,
+              <https://www.rfc-editor.org/rfc/rfc7591>.
+
+   [RFC8705]  Campbell, B., Bradley, J., Sakimura, N., and T.
+              Lodderstedt, "OAuth 2.0 Mutual-TLS Client Authentication
+              and Certificate-Bound Access Tokens", RFC 8705,
+              DOI 10.17487/RFC8705, February 2020,
+              <https://www.rfc-editor.org/rfc/rfc8705>.
+
+   [RFC9396]  Lodderstedt, T., Richer, J., and B. Campbell, "OAuth 2.0
+              Rich Authorization Requests", RFC 9396,
+              DOI 10.17487/RFC9396, May 2023,
+              <https://www.rfc-editor.org/rfc/rfc9396>.
+
+   [RFC9449]  Fett, D., Campbell, B., Bradley, J., Lodderstedt, T.,
+              Jones, M., and D. Waite, "OAuth 2.0 Demonstrating Proof of
+              Possession (DPoP)", RFC 9449, DOI 10.17487/RFC9449,
+              September 2023, <https://www.rfc-editor.org/rfc/rfc9449>.
+
+   [RFC9700]  Lodderstedt, T., Bradley, J., Labunets, A., and D. Fett,
+              "Best Current Practice for OAuth 2.0 Security", BCP 240,
+              RFC 9700, DOI 10.17487/RFC9700, January 2025,
+              <https://www.rfc-editor.org/rfc/rfc9700>.
+
+Appendix A.  Comparison with Related Tokens
+
+   +===============+==================+==============+=================+
+   | Property      | JWT Access       | Txn-Token    | Txn-AT          |
+   |               | Token            |              |                 |
+   +===============+==================+==============+=================+
+   | typ           | at+jwt           | txntoken+jwt | txnat+jwt       |
+   +---------------+------------------+--------------+-----------------+
+   | Issuer        | AS               | TTS          | AS              |
+   +---------------+------------------+--------------+-----------------+
+   | Audience      | Resource         | Trust domain | Single resource |
+   |               | server           |              | server          |
+   +---------------+------------------+--------------+-----------------+
+   | Lifetime      | Minutes to       | Very short   | Very short      |
+   |               | hours            |              |                 |
+   +---------------+------------------+--------------+-----------------+
+   | txn           | No               | Yes          | Yes, per        |
+   |               |                  |              | audience        |
+   +---------------+------------------+--------------+-----------------+
+   | Context       | Scope (and       | tctx, rctx   | tctx, rctx (AS- |
+   |               | RAR)             |              | asserted)       |
+   +---------------+------------------+--------------+-----------------+
+   | Crosses trust | Yes              | No           | Yes, to one RS  |
+   | domains       |                  |              |                 |
+   +---------------+------------------+--------------+-----------------+
+
+                         Table 2: Token Comparison
+
+Appendix B.  Examples
+
+   Line breaks within values are for display purposes only.
+
+B.1.  Token Exchange Request (New Transaction)
+
+   POST /token HTTP/1.1
+   Host: as.example.com
+   Content-Type: application/x-www-form-urlencoded
+   DPoP: eyJ0eXAiOiJkcG9wK2p3dCIs...
+
+   grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3A
+     token-exchange
+   &requested_token_type=urn%3Aietf%3Aparams%3Aoauth%3A
+     token-type%3Atxn_access_token
+   &subject_token=eyJhbGciOiJFUzI1NiIs...
+   &subject_token_type=urn%3Aietf%3Aparams%3Aoauth%3A
+     token-type%3Aaccess_token
+   &actor_token=eyJhbGciOiJFUzI1NiIs...
+   &actor_token_type=urn%3Aietf%3Aparams%3Aoauth%3A
+     token-type%3Ajwt
+   &resource=https%3A%2F%2Fapi.example.net
+   &scope=invoices.read
+
+B.2.  Token Response
+
+   {
+     "access_token": "eyJ0eXAiOiJ0eG5hdCtqd3QiLCJhbGci...",
+     "issued_token_type":
+       "urn:ietf:params:oauth:token-type:txn_access_token",
+     "token_type": "DPoP",
+     "expires_in": 60,
+     "txn_handle": "th_9Qm2xVb7LkP0sR4tYw8eZa"
+   }
+
+B.3.  Decoded Txn-AT
+
+   Header:
+
+   {
+     "typ": "txnat+jwt",
+     "alg": "ES256",
+     "kid": "as-2026-09"
+   }
+
+   Payload:
+
+   {
+     "iss": "https://as.example.com",
+     "aud": "https://api.example.net",
+     "sub": "pw-5c1e9f0a2b",
+     "client_id": "agent-7f3a",
+     "iat": 1790560000,
+     "exp": 1790560060,
+     "jti": "0f8b6a4e-2d1c-4b7e-9a3f-6c5d4e3b2a10",
+     "txn": "k3JdQ9vX2mPz7LwR5tYb8A",
+     "scope": "invoices.read",
+     "tctx": {
+       "task": "summarize_invoices",
+       "period": "2026-Q3"
+     },
+     "rctx": {
+       "req_ip": "198.51.100.7",
+       "authn": "private_key_jwt"
+     },
+     "act": {
+       "sub": "agent-7f3a"
+     },
+     "cnf": {
+       "jkt": "0ZcOCORZNYy-DWpqq30jZyJGHTN0d2HglBV3uiguA4I"
+     }
+   }
+
+B.4.  Additional Txn-AT for the Same Transaction (Refresh Token Grant)
+
+   POST /token HTTP/1.1
+   Host: as.example.com
+   Content-Type: application/x-www-form-urlencoded
+   DPoP: eyJ0eXAiOiJkcG9wK2p3dCIs...
+
+   grant_type=refresh_token
+   &refresh_token=rt_Hq4mN8vK2pXz
+   &requested_token_type=urn%3Aietf%3Aparams%3Aoauth%3A
+     token-type%3Atxn_access_token
+   &resource=https%3A%2F%2Fbilling.example.org
+   &txn_handle=th_9Qm2xVb7LkP0sR4tYw8eZa
+
+   The resulting Txn-AT has aud set to https://billing.example.org and a
+   txn value that cannot be correlated with k3JdQ9vX2mPz7LwR5tYb8A.
+
+Appendix C.  Open Issues
+
+   *  Should the AS return the transaction handle's expiry, for example
+      in a txn_handle_expires_in parameter?
+
+   *  Should a resource server error code be defined, for use in the
+      WWW-Authenticate response header, that signals a Txn-AT is
+      required?
+
+   *  Should the AS be able to end a transaction explicitly before its
+      handle expires, for example through a revocation-style endpoint
+      for handles?
+
+   *  Should a common vocabulary for tctx be defined for AI agent tasks,
+      or left to deployments?
+
+   *  How should this draft align with the WIMSE WG and with AI agent
+      authorization work?
+
+   *  Name: "Transactional Access Tokens" is close to "Transaction
+      Tokens".  Should an alternative, such as "Transaction-Scoped
+      Access Tokens", be considered?
+
+Acknowledgments
+
+   The authors thank the authors of [TXN-TOKENS], whose work this
+   document builds on.
+
+Document History
+
+   -00
+
+   *  Initial version.
+
+Contributors
+
+   Pieter Kasselman
+   Defakto Security
+   Email: pieter@defakto.security
+
+
+Author's Address
+
+   Atul Tulshibagwale
+   CrowdStrike
+   Email: atul.tulshibagwale@crowdstrike.com
