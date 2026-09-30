@@ -4,8 +4,8 @@
 
 Web Authorization Protocol                              A. Tulshibagwale
 Internet-Draft                                               CrowdStrike
-Intended status: Standards Track                       29 September 2026
-Expires: 2 April 2027
+Intended status: Standards Track                       30 September 2026
+Expires: 3 April 2027
 
 
                       Transactional Access Tokens
@@ -55,7 +55,7 @@ Status of This Memo
    time.  It is inappropriate to use Internet-Drafts as reference
    material or to cite them other than as "work in progress."
 
-   This Internet-Draft will expire on 2 April 2027.
+   This Internet-Draft will expire on 3 April 2027.
 
 Copyright Notice
 
@@ -100,8 +100,8 @@ Table of Contents
      7.4.  Transaction Handle Theft
      7.5.  Context Integrity
      7.6.  Generating Transaction Identifiers
-     7.7.  Compromise of K_txn
-     7.8.  Clock Skew
+       7.6.1.  Compromise of K_txn
+     7.7.  Clock Skew
    8.  Privacy Considerations
      8.1.  Transaction Correlation
      8.2.  Other Correlating Claims
@@ -419,9 +419,11 @@ Table of Contents
    *  the client credentials grant (Section 4.4 of [RFC6749]).
 
    The AS MUST NOT issue Txn-ATs directly from the authorization code
-   grant.  The authorization code grant MAY be used to obtain user
-   consent and a refresh token, which the client then uses to request
-   Txn-ATs.
+   grant.  Requiring user interaction — such as consent or credential
+   entry — for every transaction is unrealistic and would disrupt the
+   user experience.  Instead, the authorization code grant MAY be used
+   once to obtain user consent and a refresh token, which the client
+   then uses to request Txn-ATs without further user involvement.
 
    The token exchange grant is used when the client holds a source
    token, for example a token representing the user as the subject and
@@ -685,7 +687,7 @@ Table of Contents
    retired keys, or record which key each transaction used, for as long
    as it requires this audit capability.
 
-7.7.  Compromise of K_txn
+7.6.1.  Compromise of K_txn
 
    Disclosure of K_txn allows the holder, together with knowledge of
    ITIDs, to correlate txn values across resource servers.  It does not
@@ -694,7 +696,7 @@ Table of Contents
    internal state.  The AS SHOULD protect K_txn with the same rigor as
    its token signing keys.
 
-7.8.  Clock Skew
+7.7.  Clock Skew
 
    Short lifetimes increase sensitivity to clock skew.  Resource servers
    SHOULD allow no more than a small leeway, such as 30 seconds, when
@@ -752,14 +754,16 @@ Table of Contents
 
    Deployments should plan for:
 
-   *  low-latency signing;
+   *  low-latency policy evaluation
 
-   *  regional or distributed AS deployment;
+   *  low-latency signing
 
-   *  capacity planning based on transaction rates; and
+   *  regional or distributed AS deployment
 
-   *  management of K_txn, including rotation and retention of retired
-      keys.
+   *  capacity planning based on transaction rates, and
+
+   *  If applicable, management of K_txn, including rotation and
+      retention of retired keys.
 
 10.  IANA Considerations
 
