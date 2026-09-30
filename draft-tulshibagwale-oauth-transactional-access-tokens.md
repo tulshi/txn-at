@@ -312,7 +312,7 @@ following grants:
 * the client credentials grant ({{Section 4.4 of RFC6749}}).
 
 The AS MUST NOT issue Txn-ATs directly from the authorization code grant.
-Requiring user interaction — such as consent or credential entry — for
+Requiring user interaction such as consent or credential entry for
 every transaction is unrealistic and would disrupt the user experience.
 Instead, the authorization code grant MAY be used once to obtain user
 consent and a refresh token, which the client then uses to request
