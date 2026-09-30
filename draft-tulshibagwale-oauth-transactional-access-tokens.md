@@ -312,8 +312,11 @@ following grants:
 * the client credentials grant ({{Section 4.4 of RFC6749}}).
 
 The AS MUST NOT issue Txn-ATs directly from the authorization code grant.
-The authorization code grant MAY be used to obtain user consent and a
-refresh token, which the client then uses to request Txn-ATs.
+Requiring user interaction — such as consent or credential entry — for
+every transaction is unrealistic and would disrupt the user experience.
+Instead, the authorization code grant MAY be used once to obtain user
+consent and a refresh token, which the client then uses to request
+Txn-ATs without further user involvement.
 
 The token exchange grant is used when the client holds a source token,
 for example a token representing the user as the subject and the
@@ -561,7 +564,7 @@ while no other party can. An AS that rotates `K_txn` needs to retain
 retired keys, or record which key each transaction used, for as long
 as it requires this audit capability.
 
-## Compromise of K_txn
+### Compromise of K_txn
 
 Disclosure of `K_txn` allows the holder, together with knowledge of
 ITIDs, to correlate `txn` values across resource servers. It does not
@@ -622,10 +625,11 @@ path of each transaction:
 
 Deployments should plan for:
 
-* low-latency signing;
-* regional or distributed AS deployment;
-* capacity planning based on transaction rates; and
-* management of `K_txn`, including rotation and retention of retired
+* low-latency policy evaluation
+* low-latency signing
+* regional or distributed AS deployment
+* capacity planning based on transaction rates, and
+* If applicable, management of `K_txn`, including rotation and retention of retired
   keys.
 
 # IANA Considerations
